@@ -3,18 +3,24 @@ namespace Prequel;
 
 require(__DIR__ . '/lib/predis/lib/Predis.php');
 
+/**
+ * A Redis backed queue
+ */
 class Queue {
 	protected $name;
 
 	protected $client;
 
-	public function __construct($name) {
+	public function __construct($name, \Predis\Client $client) {
 		$this->name = $name;
+		$this->client = $client;
 	}
 
 	/**
+	 * Publish a message to the queue, specifiy an id array key for unique
+	 * messages.
+	 *
 	 * @param array $message Serializable array
-	 * @param string $id
 	 * @return void
 	 */
 	public function publish(array $message) {
@@ -23,15 +29,18 @@ class Queue {
 			if (!$added) return;
 		}
 		$encodedMessage = json_encode($message);
-		$this->client->rpush("queue:{$this->name}:messages", $encodedMessage);
+		$this->client->lpush("queue:{$this->name}:messages", $encodedMessage);
 	}
 
 	/**
+	 * Wait for a message in the queue and return the message for processing
+	 * (without safety queue)
+	 *
 	 * @param int $timeout
-	 * @return array The message
+	 * @return array The JSON decoded message
 	 */
 	public function wait($timeout = 60) {
-		$keyAndMessage = $this->client->blpop("queue:{$this->name}:messages", $timeout);
+		$keyAndMessage = $this->client->brpop("queue:{$this->name}:messages", $timeout);
 		$message = $keyAndMessage[1];
 		if (is_string($message)) {
 			$decodedMessage = json_decode($message, TRUE);
@@ -44,8 +53,35 @@ class Queue {
 		}
 	}
 
-	public function setClient(\Predis\Client $client) {
-		$this->client = $client;
+	/**
+	 * Wait for a message in the queue and save the message to a safety processing
+	 * queue.
+	 *
+	 * @param int $timeout
+	 * @return array The JSON decoded message and original message
+	 */
+	public function waitAndSave($timeout = 60) {
+		$keyAndMessage = $this->client->brpoplpush("queue:{$this->name}:messages", "queue:{$this->name}:processing", $timeout);
+		$message = $keyAndMessage[1];
+		if (is_string($message)) {
+			$decodedMessage = json_decode($message, TRUE);
+			if (isset($decodedMessage['id'])) {
+				$this->client->srem("queue:{$this->name}:ids", $decodedMessage['id']);
+			}
+			return array($decodedMessage, $message);
+		} else {
+			return NULL;
+		}
+	}
+
+	/**
+	 * Mark a message as finished
+	 *
+	 * @param string $message
+	 * @return boolean TRUE if the message could be removed
+	 */
+	public function finish($message) {
+		return $this->client->lrem("queue:{$this->name}:processing", 0, $message) > 0;
 	}
 }
 
