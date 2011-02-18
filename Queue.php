@@ -37,7 +37,7 @@ class Queue {
 	 * (without safety queue)
 	 *
 	 * @param int $timeout
-	 * @return array The JSON decoded message
+	 * @return array The JSON decoded message or NULL if a timeout occured
 	 */
 	public function wait($timeout = 60) {
 		$keyAndMessage = $this->client->brpop("queue:{$this->name}:messages", $timeout);
@@ -58,7 +58,7 @@ class Queue {
 	 * queue.
 	 *
 	 * @param int $timeout
-	 * @return array The JSON decoded message and original message
+	 * @return array The JSON decoded message and original message or NULL if a timeout occured
 	 */
 	public function waitAndSave($timeout = 60) {
 		$keyAndMessage = $this->client->brpoplpush("queue:{$this->name}:messages", "queue:{$this->name}:processing", $timeout);
