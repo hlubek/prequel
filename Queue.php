@@ -83,6 +83,15 @@ class Queue {
 	public function finish($message) {
 		return $this->client->lrem("queue:{$this->name}:processing", 0, $message) > 0;
 	}
-}
 
+	/**
+	 * @return void
+	 */
+	public function dump() {
+		echo "Messages in queue {$this->name}:\n";
+		$messages = $this->client->lrange("queue:{$this->name}:messages", 0, 100);
+		print_r($messages);
+
+	}
+}
 ?>
